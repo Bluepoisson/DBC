@@ -67,7 +67,7 @@ async function startServer() {
       description: "Scandinavian Link",
       delay: "00:00:00",
       speed: "75 km/h",
-      vector: { lat: -0.00015, lng: -0.00005 }
+      vector: { lat: -0.0015, lng: -0.00005 }
     }
   ];
 
@@ -78,7 +78,9 @@ async function startServer() {
   // Explicit initialization of global scope variable for tools context
   globalThis.fleet = [];
 
-  // Real-time API Fetcher (Banedanmark ArcGIS with EPSG:4326 projection forcing)
+  // ==========================================
+  // UPDATED POLING METHOD START
+  // ==========================================
   const fetchRealTimeFleet = async () => {
     try {
       const res = await axios.get(
@@ -133,11 +135,11 @@ async function startServer() {
         "Telemetry Interface Sync Suspended (Clearing stale live records):", 
         error instanceof Error ? error.message : "Unknown error"
       );
-      // BUGFIX: Clears old items out so they do not freeze in space forever on layout failures
+      // Clears old items out so they do not freeze in space forever on layout failures
       liveFleet = []; 
     }
 
-    // Step 2: Handle Simulation Vectoring Cleanly 
+    // Handle Simulation Vectoring Cleanly 
     simulatedFleet = simulatedFleet.map(train => {
       const vLat = train.vector?.lat || 0;
       const vLng = train.vector?.lng || 0;
@@ -154,15 +156,20 @@ async function startServer() {
       return { ...train, lat: newLat, lng: newLng, speed: newSpeed };
     });
 
-    // Step 3: Emit combined array down the websocket pipe
+    // Emit combined array down the websocket pipe
     const updatedFleet = [...simulatedFleet, ...liveFleet];
     globalThis.fleet = updatedFleet;
     io.emit("fleet_update", updatedFleet);
+
+    // RECURSION CALL FIX: Schedule next execution ONLY when this complete lifecycle finishes
+    setTimeout(fetchRealTimeFleet, 10000);
   };
 
-  // Run loops
+  // Kick off the initial loop execution
   fetchRealTimeFleet();
-  setInterval(fetchRealTimeFleet, 10000);
+  // ==========================================
+  // UPDATED POLING METHOD END
+  // ==========================================
 
   io.on("connection", (socket) => {
     console.log(`Client active: ${socket.id} connects via [${socket.conn.transport.name}]`);
@@ -184,81 +191,4 @@ async function startServer() {
 
     try {
       const trackingTool = {
-        functionDeclarations: [{
-          name: "get_corridor_freight_telemetry",
-          description: "Fetches live geospatial tracking coordinates, route vectors, and transit delay statuses for cargo trains running across Italy, Germany, Denmark, and Sweden.",
-          parameters: {
-            type: Type.OBJECT,
-            properties: {
-              country_code: { type: Type.STRING, enum: ["IT", "DE", "DK", "SE"] },
-              carrier: { type: Type.STRING }
-            }
-          }
-        }]
-      };
-
-      // Query Gemini
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: message,
-        config: { tools: [trackingTool] }
-      });
-
-      const functionCalls = response.functionCalls;
-
-      // Handle function execution sequence if requested by the model
-      if (functionCalls && functionCalls.length > 0) {
-        const call = functionCalls[0];
-        
-        if (call.name === 'get_corridor_freight_telemetry') {
-          // Fire your local execution context block inside tools.ts
-          const toolResult = toolDeclarations.get_corridor_freight_telemetry(call.args as any);
-
-          // Return result matrix downstream back to the model 
-          const finalResponse = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: [
-              { role: 'user', parts: [{ text: message }] },
-              { role: 'model', parts: [{ functionCall: call }] },
-              { 
-                role: 'tool', 
-                parts: [{ 
-                  functionResponse: { name: call.name, response: toolResult } 
-                }] 
-              }
-            ],
-            config: { tools: [trackingTool] }
-          });
-
-          return res.json({ success: true, response: finalResponse.text });
-        }
-      }
-
-      res.json({ success: true, response: response.text });
-    } catch (aiError) {
-      console.error("AI Studio Function Calling Failed:", aiError);
-      res.status(500).json({ error: "AI core parsing failure scenario encountered." });
-    }
-  });
-
-  // Vite Single Page Application fallbacks
-  if (process.env.NODE_ENV !== "production") {
-    const vite = await createViteServer({
-      server: { middlewareMode: true },
-      appType: "spa",
-    });
-    app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
-  }
-
-  httpServer.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on port: ${PORT}`);
-  });
-}
-
-startServer();
+        functionDeclarations:
