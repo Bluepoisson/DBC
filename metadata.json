@@ -1,0 +1,6 @@
+{
+  "name": "CPC Tracking Dashboard",
+  "description": "A professional container tracking dashboard using live data from cpctracking.dk.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
